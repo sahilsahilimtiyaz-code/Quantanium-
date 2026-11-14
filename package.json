@@ -1,0 +1,11 @@
+{
+  "name": "quantanium-web-preview",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js",
+    "test": "node --test server.test.js",
+    "build": "node --check server.js && node --check docs/main.js && node --test server.test.js"
+  }
+}

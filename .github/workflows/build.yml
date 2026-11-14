@@ -1,0 +1,150 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: 'Build mode (debug, release, or both)'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - debug
+          - release
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build AntiGem APKs & Bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Clean Orphaned Submodule Entry (antigem_plugins)
+        run: |
+          if git ls-files --stage | grep -q "^160000 .*antigem_plugins"; then
+            echo "Removing orphaned antigem_plugins gitlink from index..."
+            git rm -rf --cached --ignore-unmatch antigem_plugins || true
+          fi
+
+      - name: Install System Dependencies (xz-utils)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y xz-utils
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Go 1.24
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache-dependency-path: agy_ide_bridge/go.sum
+
+      - name: Accept Android SDK Licenses
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_HOME}"
+          echo "ANDROID_HOME=${ANDROID_HOME}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_HOME}" >> "$GITHUB_ENV"
+          SDKMANAGER=$(find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "${SDKMANAGER}" ]; then
+            yes | "${SDKMANAGER}" --licenses > /dev/null 2>&1 || true
+          fi
+
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure Gradle & Kotlin Memory for CI
+        run: |
+          # Remove any low-memory or in-process overrides in gradle.properties and set 5 GB heap for 16 GB ubuntu-latest runners
+          sed -i '/^org\.gradle\.jvmargs=/d' gradle.properties
+          sed -i '/^kotlin\.daemon\.jvmargs=/d' gradle.properties
+          sed -i '/^kotlin\.compiler\.execution\.strategy=/d' gradle.properties
+          sed -i '/^org\.gradle\.workers\.max=/d' gradle.properties
+          cat >> gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC -Dfile.encoding=UTF-8
+          kotlin.daemon.jvmargs=-Xmx5120m -XX:MaxMetaspaceSize=1024m -XX:+UseG1GC
+          kotlin.compiler.execution.strategy=daemon
+          org.gradle.workers.max=2
+          org.gradle.daemon.performance.disable-logging=true
+          EOF
+          tail -n 10 gradle.properties
+
+      - name: Read Version Metadata
+        id: version
+        run: |
+          VERSION_NAME=$(python3 -c "import json; print(json.load(open('version.json')).get('version_name', '1.0.0'))")
+          VERSION_CODE=$(python3 -c "import json; print(json.load(open('version.json')).get('version_code', 1))")
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Building AntiGem v${VERSION_NAME} (code ${VERSION_CODE})"
+
+      - name: Prepare Signing Keystore
+        run: |
+          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
+            echo "Using RELEASE_KEYSTORE_BASE64 secret for release signing..."
+            echo "${RELEASE_KEYSTORE_BASE64}" | base64 -d > app/release.jks
+          else
+            echo "RELEASE_KEYSTORE_BASE64 not set; generating fallback release.jks for CI builds..."
+            keytool -genkeypair -v \
+              -keystore app/release.jks \
+              -alias antigem \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass 123456 \
+              -keypass 123456 \
+              -dname "CN=AntiGem, OU=Mobile, O=AntiGem, L=Local, S=Local, C=US"
+          fi
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+
+      - name: Build Go IDE Bridge (ARM64)
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:compressAgyIdeBridge --no-configuration-cache
+          ls -lh app/src/main/assets/bin/agy_ide_bridge.xz
+
+      - name: Build Single Termux Debug APK
+        run: |
+          mkdir -p output
+          ./gradlew :app:assembleTermuxDebug --max-workers=2 --no-configuration-cache
+          find app/build/outputs/apk/termux/debug -name "*.apk" -exec cp {} "output/antiGem-v${{ steps.version.outputs.version_name }}-debug.apk" \;
+          cd output
+          sha256sum *.apk > SHA256SUMS.txt 2>/dev/null || true
+          ls -lh
+
+      - name: Upload Single Debug APK as GitHub Actions Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AntiGem-Debug-APK-v${{ steps.version.outputs.version_name }}
+          path: |
+            output/antiGem-v${{ steps.version.outputs.version_name }}-debug.apk
+            output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

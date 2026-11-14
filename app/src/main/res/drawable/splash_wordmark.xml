@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "QUANTANIUM" splash wordmark (Android 12+ windowSplashScreenBrandingImage, and bottom of splash_background.xml).
+     Geometric uppercase stroke lettering, centered within 200x80 with split-I Prism motif. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="80dp"
+    android:viewportWidth="200"
+    android:viewportHeight="80">
+    <!-- Q -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M55.25 35.2 A3.4 4.8 0 1 0 55.25 44.8 A3.4 4.8 0 1 0 55.25 35.2 M56.45 42.3 L58.95 45.5"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- U -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M61.95 35.2 V41.6 A3.4 3.2 0 0 0 68.75 41.6 V35.2"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- A -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M72.15 44.8 L75.55 35.2 L78.95 44.8 M73.25 41.9 H77.85"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- N -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M82.35 44.8 V35.2 L89.15 44.8 V35.2"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- T -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M92.25 35.2 H99.65 M95.95 35.2 V44.8"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- A -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M102.75 44.8 L106.15 35.2 L109.55 44.8 M103.85 41.9 H108.45"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- N -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M112.95 44.8 V35.2 L119.75 44.8 V35.2"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- I (split bar matching Prism mark) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M124.85 35.2 V38.9 M124.85 41.1 V44.8"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- U -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M129.25 35.2 V41.6 A3.4 3.2 0 0 0 136.05 41.6 V35.2"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+    <!-- M -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M139.45 44.8 V35.2 L143.85 41.8 L148.25 35.2 V44.8"
+        android:strokeColor="#FF9AA0AB"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.75" />
+</vector>

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantanium — Multi-Agent AI IDE &amp; Native Linux Workspace for Android</title>
+
+  <meta name="title" content="Quantanium — Multi-Agent AI IDE &amp; Native Linux Workspace for Android">
+  <meta name="description" content="Quantanium (com.quantanium) turns Android into a full multi-agent IDE featuring Claude Code, OpenCode, Codex, and Antigravity over a native Termux Linux subsystem and Go Wire bridge.">
+  <meta name="keywords" content="Quantanium, Android IDE, Agentic AI, Claude Code, OpenCode, Codex, Antigravity, Termux Terminal, Jetpack Compose, Wire gRPC">
+  <meta name="theme-color" content="#090d16">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Quantanium">
+  <meta property="og:title" content="Quantanium — Multi-Agent AI IDE &amp; Native Linux Workspace for Android">
+  <meta property="og:description" content="Run Antigravity, Claude Code, OpenCode, and Codex natively on Android with universal archive importers, a full Termux Linux subsystem, and an embedded Go Wire bridge.">
+  <meta property="og:image" content="resources/chat_screen.jpg">
+  <meta property="og:image:alt" content="Quantanium Android IDE and Multi-Agent Chat Interface">
+  <meta property="og:locale" content="en_US">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2222%22 fill=%22%230b1120%22/><text x=%2250%25%22 y=%2268%25%22 text-anchor=%22middle%22 font-size=%2262%22 fill=%22%237f52ff%22>◈</text></svg>">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient-glow ambient-glow-1" aria-hidden="true"></div>
+  <div class="ambient-glow ambient-glow-2" aria-hidden="true"></div>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="navbar">
+    <div class="container nav-inner">
+      <a href="#top" class="nav-brand">Quantanium</a>
+
+      <nav class="nav-links" id="navLinks" aria-label="Primary">
+        <a href="#architecture">Architecture</a>
+        <a href="#agents">Agents</a>
+        <a href="#flavors">Flavors</a>
+        <a href="#showcase">Showcase</a>
+        <a href="#build">Build</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="#build" class="btn btn-primary">Build APK</a>
+        <button
+          type="button"
+          class="mobile-menu-btn"
+          id="mobileMenuBtn"
+          aria-label="Toggle navigation menu"
+          aria-expanded="false"
+          aria-controls="navLinks"
+        >☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <p class="hero-kicker">
+          <span>Android Multi-Agent Workstation</span>
+          <span aria-hidden="true">·</span>
+          <span>com.quantanium</span>
+          <span aria-hidden="true">·</span>
+          <span>Termux &amp; PRoot Subsystem</span>
+        </p>
+
+        <h1 class="hero-title">
+          One Native Workspace for<br>
+          <span class="hero-title-gradient">Every Coding Agent on Android</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Quantanium pairs Jetpack Compose with an embedded Go IDE bridge, a native Linux PTY terminal, and universal installers for Antigravity (<code>agy</code>), Claude Code, OpenCode, and Codex.
+        </p>
+
+        <div class="hero-cta">
+          <a href="#build" class="btn btn-primary btn-lg">Build Termux Debug APK</a>
+          <a href="#agents" class="btn btn-secondary btn-lg">Explore Agent Importers</a>
+        </div>
+
+        <div class="hero-visual">
+          <div class="hero-visual-inner">
+            <figure class="hero-frame">
+              <img src="resources/chat_screen.jpg" alt="Quantanium agent chat interface showing live tool execution" loading="eager">
+              <figcaption>Agentic Chat &amp; Tool Cards</figcaption>
+            </figure>
+            <figure class="hero-frame">
+              <img src="resources/ide_code_editor.jpg" alt="Quantanium mobile IDE editor with syntax highlighting" loading="eager">
+              <figcaption>Mobile IDE &amp; Multi-Tab Editor</figcaption>
+            </figure>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">01. Core Architecture</p>
+          <h2 class="section-title">Structured Bridge Protocols, Not Fragile Shell Scraping</h2>
+          <p class="section-desc">
+            Quantanium runs a local Go daemon (<code>agy_ide_bridge</code>) that manages agent lifecycles, transcripts, file trees, Git state, and bidirectional WebSocket / Square Wire gRPC streams.
+          </p>
+        </div>
+
+        <div class="arch-card">
+          <div class="arch-flow">
+            <div class="arch-node">
+              <div class="arch-node-label">Client Layer</div>
+              <h3 class="arch-node-title">Quantanium Android UI</h3>
+              <p class="arch-node-subtitle">Jetpack Compose screens, QuanTerm PTY, and Material 3 adaptive motion</p>
+            </div>
+
+            <div class="arch-connector" aria-hidden="true">
+              <span>Wire gRPC · WS</span>
+              <div class="arch-connector-line"></div>
+            </div>
+
+            <div class="arch-node">
+              <div class="arch-node-label">Bridge Layer</div>
+              <h3 class="arch-node-title">Embedded Go Bridge</h3>
+              <p class="arch-node-subtitle"><code>agy_ide_bridge</code> daemon IPC, MCP routing, and transcript persistence</p>
+            </div>
+
+            <div class="arch-connector" aria-hidden="true">
+              <span>Native Exec · RPC</span>
+              <div class="arch-connector-line"></div>
+            </div>
+
+            <div class="arch-node">
+              <div class="arch-node-label">Agent Layer</div>
+              <h3 class="arch-node-title">4 Coding Backends</h3>
+              <p class="arch-node-subtitle">Antigravity (<code>agy</code>), Claude Code, OpenCode, and Codex runtimes</p>
+            </div>
+          </div>
+
+          <div class="arch-points">
+            <div class="arch-point-item">
+              <h4>Type-Safe Protobuf Streams</h4>
+              <p>Direct Square Wire RPC communication handles live reasoning deltas, diffs, and approval modals without stdout fragility.</p>
+            </div>
+            <div class="arch-point-item">
+              <h4>Bundled Glibc Runtime</h4>
+              <p>Automatically wraps dynamic glibc ELF binaries using Quantanium's Termux glibc loader so upstream desktop releases execute cleanly.</p>
+            </div>
+            <div class="arch-point-item">
+              <h4>Integrated Browser &amp; MCP</h4>
+              <p>Inspect local web apps, automate DOM checks, manage Git branches, and run full Linux toolchains directly on-device.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="agents">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">02. Universal Agent Importers</p>
+          <h2 class="section-title">All Four Agents Ready Out of the Box</h2>
+          <p class="section-desc">
+            Import offline bundles or install directly in-app across <code>.tar.gz</code>, <code>.tgz</code>, <code>.tar.xz</code>, <code>.txz</code>, <code>.zip</code>, <code>.tar</code>, compressed <code>.gz</code>/<code>.xz</code> files, scripts, and raw ARM64 ELF binaries.
+          </p>
+        </div>
+
+        <div class="agents-bento">
+          <article class="agent-card agent-card-wide">
+            <div class="agent-meta">Claude Code · <code>~/.local/share/claude</code></div>
+            <h3>Universal Bundle &amp; Glibc Wrapper Installer</h3>
+            <p>
+              Extracts archives safely with Zip-Slip path validation, auto-detects versions from <code>package.json</code> or filenames, installs side-by-side versions, updates symlinks, and generates Termux glibc loader wrappers automatically.
+            </p>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-meta">OpenCode · <code>~/.opencode/bin/opencode</code></div>
+            <h3>NPM Tarballs &amp; Raw ELFs</h3>
+            <p>
+              Unpacks official OpenCode tarballs, zips, or standalone binaries, preserves POSIX 0755 permissions, and refreshes the bridge status immediately on completion.
+            </p>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-meta">Codex · <code>~/.local/bin/codex</code></div>
+            <h3>ARM64 Binary &amp; Glibc Loader</h3>
+            <p>
+              Detects dynamically linked glibc ELFs inside Codex releases, places the real binary under <code>libexec/</code>, and wires an automatic loader wrapper plus Termux/PRoot symlinks.
+            </p>
+          </article>
+
+          <article class="agent-card agent-card-wide">
+            <div class="agent-meta">Antigravity (<code>agy</code>) · <code>~/.local/bin/agy</code></div>
+            <h3>Local Hub Binary &amp; Auto-Restart Wiring</h3>
+            <p>
+              Imports standalone or archived <code>agy</code> CLI releases (with optional bundled <code>language_server</code> companions), installs cleanly into home &amp; Termux bin paths, and triggers immediate bridge availability checks.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="flavors">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">03. Build Flavors</p>
+          <h2 class="section-title">Choose Your Target Variant</h2>
+          <p class="section-desc">
+            Quantanium supports standalone Termux packaging as well as standard Android packaging under <code>com.quantanium</code>.
+          </p>
+        </div>
+
+        <div class="flavor-grid">
+          <article class="flavor-card recommended">
+            <p class="flavor-kicker">Recommended · Standalone Subsystem</p>
+            <h3 class="flavor-name">Termux Flavor</h3>
+            <p class="flavor-pkg">com.termux · quantanium-termux-debug.apk</p>
+            <p class="flavor-desc">
+              All-in-one sandboxed Linux workspace. Pre-wired for embedded Termux rootfs, glibc binaries, compilers, Node.js, Python, and background daemon execution without external apps.
+            </p>
+            <ul class="flavor-features">
+              <li>Zero external Termux dependency</li>
+              <li>Bundled ARM64 glibc compatibility layer</li>
+              <li>Native foreground service &amp; QuanTerm launcher option</li>
+            </ul>
+            <a href="#build" class="btn btn-primary full-width">Build Termux Debug APK</a>
+          </article>
+
+          <article class="flavor-card">
+            <p class="flavor-kicker">Modular · PRoot &amp; Remote Ready</p>
+            <h3 class="flavor-name">Standard Flavor</h3>
+            <p class="flavor-pkg">com.quantanium</p>
+            <p class="flavor-desc">
+              Runs under the dedicated <code>com.quantanium</code> application ID, pairing with PRoot Ubuntu containers or remote Go bridge hosts on custom ports.
+            </p>
+            <ul class="flavor-features">
+              <li>Clean <code>com.quantanium</code> package namespace</li>
+              <li>Dual home + PRoot binary synchronization</li>
+              <li>Isolated bridge, hub, and MCP ports</li>
+            </ul>
+            <a href="#build" class="btn btn-secondary full-width">Inspect Build Commands</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="showcase">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">04. Interface Showcase</p>
+          <h2 class="section-title">Every Screen Built for Touch &amp; Speed</h2>
+          <p class="section-desc">Filter workspace views or select any screenshot to inspect full-resolution UI details.</p>
+        </div>
+
+        <div class="gallery-nav" role="tablist" aria-label="Filter showcase screens">
+          <button type="button" class="gallery-tab-btn active" data-filter="all" aria-pressed="true">All Screens</button>
+          <button type="button" class="gallery-tab-btn" data-filter="chat" aria-pressed="false">Agent Chat</button>
+          <button type="button" class="gallery-tab-btn" data-filter="editor" aria-pressed="false">IDE &amp; Terminal</button>
+          <button type="button" class="gallery-tab-btn" data-filter="tools" aria-pressed="false">System &amp; Browser</button>
+        </div>
+
+        <div class="gallery-grid" id="galleryGrid">
+          <button type="button" class="gallery-card" data-category="chat" data-src="resources/chat_screen.jpg" data-title="Agentic Chat &amp; Tool Execution">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/chat_screen.jpg" alt="Agentic Chat &amp; Tool Execution screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Agentic Chat &amp; Tool Execution</span>
+              <span class="gallery-card-desc">Real-time reasoning streams, diffs, and interactive approval prompts.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="editor" data-src="resources/ide_code_editor.jpg" data-title="Full IDE Code Editor">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/ide_code_editor.jpg" alt="Full IDE Code Editor screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Full IDE Code Editor</span>
+              <span class="gallery-card-desc">Multi-tab syntax highlighting with line numbers, find/replace, and undo/redo.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="editor" data-src="resources/linux_terminal.jpg" data-title="QuanTerm Linux Terminal">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/linux_terminal.jpg" alt="QuanTerm Linux Terminal screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">QuanTerm Linux Terminal</span>
+              <span class="gallery-card-desc">High-performance PTY with customizable palettes and quick-action bar.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="chat" data-src="resources/sidebar_navigation.jpg" data-title="Sidebar &amp; Workspace History">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/sidebar_navigation.jpg" alt="Sidebar Navigation and Workspace History screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Sidebar &amp; Workspace History</span>
+              <span class="gallery-card-desc">Organized session transcripts, agent filters, and active project trees.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="tools" data-src="resources/account_profile_quota.jpg" data-title="Quota &amp; Account Inspector">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/account_profile_quota.jpg" alt="Quota and Account Inspector screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Quota &amp; Account Inspector</span>
+              <span class="gallery-card-desc">Unified status, model quotas, and credentials across connected agents.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="tools" data-src="resources/settings_preferences.jpg" data-title="Settings, MCP &amp; Backups">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/settings_preferences.jpg" alt="Settings, MCP, and Backups screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Settings, MCP &amp; Backups</span>
+              <span class="gallery-card-desc">Rootfs backup/restore, agent importer tools, themes, and MCP presets.</span>
+            </span>
+          </button>
+
+          <button type="button" class="gallery-card" data-category="tools" data-src="resources/integrated_browser.jpg" data-title="Integrated Browser &amp; Automation">
+            <span class="gallery-card-img-wrap">
+              <img src="resources/integrated_browser.jpg" alt="Integrated Browser and Automation screenshot" loading="eager">
+            </span>
+            <span class="gallery-card-info">
+              <span class="gallery-card-title">Integrated Browser &amp; Automation</span>
+              <span class="gallery-card-desc">Local dev-server preview paired with autonomous DOM inspection.</span>
+            </span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="build">
+      <div class="container">
+        <div class="section-header">
+          <p class="section-tag">05. Source &amp; Compilation</p>
+          <h2 class="section-title">Build &amp; Test Quantanium</h2>
+          <p class="section-desc">Run unit tests, assemble the Termux Debug APK, and launch the local preview server.</p>
+        </div>
+
+        <div class="build-container">
+          <div class="prereq-card">
+            <h3 class="prereq-title">Toolchain Requirements</h3>
+            <ul class="prereq-list">
+              <li class="prereq-item">
+                <span class="prereq-badge">JDK 21</span>
+                <span>Temurin or OpenJDK 21</span>
+              </li>
+              <li class="prereq-item">
+                <span class="prereq-badge">API 36</span>
+                <span>Android SDK compileSdk 36 &amp; Build Tools 35+</span>
+              </li>
+              <li class="prereq-item">
+                <span class="prereq-badge">Go 1.23+</span>
+                <span>Cross-compiles <code>agy_ide_bridge</code> for ARM64</span>
+              </li>
+              <li class="prereq-item">
+                <span class="prereq-badge">Gradle 9.3</span>
+                <span>Builds <code>:app:assembleTermuxDebug</code></span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="code-terminal">
+            <div class="terminal-header">
+              <span class="terminal-title">bash — quantanium-workspace</span>
+              <button type="button" class="copy-btn" data-copy-target="buildCodeSnippet">Copy Commands</button>
+            </div>
+            <pre class="terminal-body" id="buildCodeSnippet"><span class="terminal-comment"># 1. Run JVM unit tests for Termux Debug</span>
+<span class="terminal-prompt">$</span> <span class="terminal-cmd">gradle :app:testTermuxDebugUnitTest</span>
+
+<span class="terminal-comment"># 2. Build recommended Termux Debug APK</span>
+<span class="terminal-prompt">$</span> <span class="terminal-cmd">gradle :app:assembleTermuxDebug</span>
+
+<span class="terminal-comment"># 3. Verify &amp; run local web preview server</span>
+<span class="terminal-prompt">$</span> <span class="terminal-cmd">npm run build &amp;&amp; npm start</span></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="lightbox-modal" id="lightboxModal" aria-labelledby="lightboxCaption">
+    <div class="lightbox-content">
+      <button type="button" class="lightbox-close" id="lightboxClose" aria-label="Close preview">✕</button>
+      <img alt="Selected Quantanium workspace screen" class="lightbox-img" id="lightboxImg">
+      <p class="lightbox-caption" id="lightboxCaption"></p>
+    </div>
+  </dialog>
+
+  <footer>
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">Quantanium</div>
+        <div class="footer-links">
+          <a href="#architecture">Architecture</a>
+          <a href="#agents">Agents</a>
+          <a href="#flavors">Flavors</a>
+          <a href="#showcase">Showcase</a>
+          <a href="#build">Build</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>Quantanium Mobile Hub &amp; Multi-Agent IDE Workspace · Package Namespace <code>com.quantanium</code></p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="main.js"></script>
+</body>
+</html>
