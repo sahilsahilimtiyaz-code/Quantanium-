@@ -138,15 +138,65 @@ object AgentArchiveImporter {
         false
     }
 
+    const val EM_386 = 3
+    const val EM_ARM = 40
+    const val EM_X86_64 = 62
+    const val EM_AARCH64 = 183
+
     /**
-     * Parses ELF64/ELF32 program headers (`PT_INTERP`, `p_type == 3`) to determine whether [file]
-     * is dynamically linked against glibc (`ld-linux-*` / `/lib/ld-*`).
-     *
-     * Static musl / Go binaries (like `codex-aarch64-unknown-linux-musl` or `agy_ide_bridge`)
-     * have no `PT_INTERP` (or reference musl) and return `false`.
+     * Reads the ELF header `e_machine` architecture identifier (`EM_AARCH64 = 183`, `EM_X86_64 = 62`, etc.),
+     * or returns `null` if [file] is not a valid ELF binary.
      */
-    fun isGlibcDynamicElf(file: File): Boolean {
-        if (!isElfFile(file) || file.length() < 64) return false
+    fun readElfMachine(file: File): Int? {
+        if (!isElfFile(file) || file.length() < 64) return null
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                val ehdr = ByteArray(64)
+                raf.readFully(ehdr)
+                val eiData = ehdr[5].toInt() and 0xFF
+                val order = if (eiData == 2) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN
+                val bb = ByteBuffer.wrap(ehdr).order(order)
+                bb.getShort(18).toInt() and 0xFFFF
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun describeElfArchitecture(machine: Int?): String = when (machine) {
+        EM_AARCH64 -> "ARM64 (aarch64)"
+        EM_X86_64 -> "x86_64 (amd64)"
+        EM_ARM -> "ARM32 (armeabi)"
+        EM_386 -> "x86 (32-bit)"
+        null -> "unknown"
+        else -> "ELF machine $machine"
+    }
+
+    /**
+     * Returns an actionable incompatibility error message if [file] is an ELF compiled for a CPU ISA
+     * that cannot execute natively under [deviceArch] (e.g. `x86_64` imported onto an `aarch64` device),
+     * or `null` when compatible / non-ELF.
+     */
+    fun checkElfArchCompatibility(file: File, deviceArch: String): String? {
+        val machine = readElfMachine(file) ?: return null
+        val normalized = deviceArch.lowercase()
+        val compatible = when {
+            normalized == "aarch64" || normalized.startsWith("arm64") -> machine == EM_AARCH64 || machine == EM_ARM
+            normalized == "x86_64" || normalized == "amd64" -> machine == EM_X86_64 || machine == EM_386
+            normalized.startsWith("arm") -> machine == EM_ARM
+            normalized == "i686" || normalized == "x86" -> machine == EM_386
+            else -> true
+        }
+        return if (compatible) null
+        else "Incompatible CPU architecture: binary is ${describeElfArchitecture(machine)}, but this device/environment runs $deviceArch."
+    }
+
+    /**
+     * Parses ELF64/ELF32 program headers (`PT_INTERP`, `p_type == 3`) and returns the dynamic linker path,
+     * or `null` for statically linked / non-ELF files.
+     */
+    fun readElfInterpreter(file: File): String? {
+        if (!isElfFile(file) || file.length() < 64) return null
         return try {
             RandomAccessFile(file, "r").use { raf ->
                 val ehdr = ByteArray(64)
@@ -159,9 +209,9 @@ object AgentArchiveImporter {
                 val (ePhOff, ePhEntSize, ePhNum) = when (eiClass) {
                     2 -> Triple(bb.getLong(32), bb.getShort(54).toInt() and 0xFFFF, bb.getShort(56).toInt() and 0xFFFF)
                     1 -> Triple((bb.getInt(28).toLong() and 0xFFFFFFFFL), bb.getShort(42).toInt() and 0xFFFF, bb.getShort(44).toInt() and 0xFFFF)
-                    else -> return false
+                    else -> return null
                 }
-                if (ePhOff <= 0L || ePhEntSize < 32 || ePhNum <= 0 || ePhNum > 256) return false
+                if (ePhOff <= 0L || ePhEntSize < 32 || ePhNum <= 0 || ePhNum > 256) return null
                 val fileLen = raf.length()
                 for (i in 0 until ePhNum) {
                     val phPos = ePhOff + i.toLong() * ePhEntSize
@@ -181,18 +231,57 @@ object AgentArchiveImporter {
                             raf.seek(pOffset)
                             val interpBytes = ByteArray(pFileSz.toInt())
                             raf.readFully(interpBytes)
-                            val interp = String(interpBytes, Charsets.US_ASCII).trim('\u0000', ' ', '\n')
-                            return (interp.contains("ld-linux") || interp.contains("/lib/ld-")) &&
-                                !interp.contains("/system/bin/linker") &&
-                                !interp.contains("musl")
+                            return String(interpBytes, Charsets.US_ASCII).trim('\u0000', ' ', '\n')
                         }
                     }
                 }
-                false
+                null
             }
         } catch (_: Throwable) {
-            false
+            null
         }
+    }
+
+    /**
+     * Returns `true` if [file] is dynamically linked against glibc (`ld-linux-*` / `/lib/ld-*`).
+     * Static musl / Go binaries and Android Bionic (`/system/bin/linker64`) binaries return `false`.
+     */
+    fun isGlibcDynamicElf(file: File): Boolean {
+        val interp = readElfInterpreter(file) ?: return false
+        return (interp.contains("ld-linux") || interp.contains("/lib/ld-")) &&
+            !interp.contains("/system/bin/linker") &&
+            !interp.contains("musl")
+    }
+
+    /** Returns `true` if [file] is a native Android Bionic ELF linked against `/system/bin/linker*`. */
+    fun isAndroidBionicElf(file: File): Boolean {
+        val interp = readElfInterpreter(file) ?: return false
+        return interp.contains("/system/bin/linker")
+    }
+
+    /**
+     * Detects unpacked Electron / Chromium Desktop IDE bundles (such as the Linux desktop `Antigravity.tar.gz`)
+     * so importers can fail clearly instead of copying the GUI Electron executable without its shared libraries.
+     */
+    fun isDesktopElectronBundle(dir: File): Boolean {
+        if (!dir.isDirectory) return false
+        val markers = setOf(
+            "libffmpeg.so",
+            "resources.pak",
+            "chrome_100_percent.pak",
+            "chrome-sandbox",
+            "icudtl.dat",
+            "v8_context_snapshot.bin",
+            "snapshot_blob.bin"
+        )
+        var hits = 0
+        dir.walkTopDown().maxDepth(4).forEach { file ->
+            if (file.isFile && file.name.lowercase() in markers) {
+                hits++
+                if (hits >= 2) return true
+            }
+        }
+        return false
     }
 
     /**
@@ -298,6 +387,7 @@ object AgentArchiveImporter {
         onProgress: (String) -> Unit
     ): ExtractedPackage {
         var versionFound: String? = null
+        var bestVersionDepth = Int.MAX_VALUE
         var count = 0
         TarArchiveInputStream(tarStream).use { tarIn ->
             var entry: TarArchiveEntry?
@@ -319,8 +409,13 @@ object AgentArchiveImporter {
                         if (cur.mode and 0b001_000_000 != 0) {
                             outputFile.setExecutable(true, false)
                         }
-                        if (outputFile.name == "package.json" && versionFound == null) {
-                            versionFound = parseVersionFromPackageJson(outputFile)
+                        val candidateVer = readMetadataVersionIfCandidate(outputFile)
+                        if (candidateVer != null) {
+                            val depth = cleanName.count { it == '/' }
+                            if (versionFound == null || depth < bestVersionDepth) {
+                                versionFound = candidateVer
+                                bestVersionDepth = depth
+                            }
                         }
                     }
                 }
@@ -337,6 +432,7 @@ object AgentArchiveImporter {
         onProgress: (String) -> Unit
     ): ExtractedPackage {
         var versionFound: String? = null
+        var bestVersionDepth = Int.MAX_VALUE
         var count = 0
         FileInputStream(zipFile).use { fileIn ->
             BufferedInputStream(fileIn, 64 * 1024).use { bufIn ->
@@ -357,8 +453,13 @@ object AgentArchiveImporter {
                             FileOutputStream(outputFile).use { out ->
                                 zipIn.copyTo(out)
                             }
-                            if (outputFile.name == "package.json" && versionFound == null) {
-                                versionFound = parseVersionFromPackageJson(outputFile)
+                            val candidateVer = readMetadataVersionIfCandidate(outputFile)
+                            if (candidateVer != null) {
+                                val depth = cleanName.count { it == '/' }
+                                if (versionFound == null || depth < bestVersionDepth) {
+                                    versionFound = candidateVer
+                                    bestVersionDepth = depth
+                                }
                             }
                         }
                         zipIn.closeEntry()
@@ -369,6 +470,16 @@ object AgentArchiveImporter {
             }
         }
         return ExtractedPackage(destDir, versionFound, count)
+    }
+
+    private fun readMetadataVersionIfCandidate(file: File): String? = when {
+        file.name == "package.json" -> parseVersionFromPackageJson(file)
+        file.name.equals("version", ignoreCase = true) && file.length() in 1..256 -> try {
+            extractSemverFromText(file.readText().trim())
+        } catch (_: Throwable) {
+            null
+        }
+        else -> null
     }
 
     /**
@@ -446,6 +557,23 @@ object AgentArchiveImporter {
     fun extractSemverFromText(text: String?): String? {
         if (text.isNullOrBlank()) return null
         return SEMVER_REGEX.find(text)?.groupValues?.getOrNull(1)
+    }
+
+    /**
+     * Parses `cli --version` stdout safely, skipping Google startup log noise (`ERROR: logging before google.Init...`).
+     */
+    fun parseCliVersionOutput(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val cleanedLines = raw.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("ERROR: logging before google.Init") }
+        cleanedLines.firstOrNull { Regex("""^v?\d+(\.\d+)+\S*$""").matches(it) }?.let {
+            return it.removePrefix("v")
+        }
+        for (line in cleanedLines) {
+            extractSemverFromText(line)?.let { return it }
+        }
+        return null
     }
 
     fun isStrictSemver(version: String?): Boolean =
@@ -581,10 +709,56 @@ object AgentArchiveImporter {
         }
     }
 
+    const val QUANTANIUM_WRAPPER_MARKER = "Generated by Quantanium agent importer"
+
+    /** Returns `true` if [file] is a Quantanium-generated glibc wrapper script. */
+    fun isQuantaniumGlibcWrapper(file: File): Boolean {
+        if (!file.isFile || isSymlink(file) || file.length() > 16_384L) return false
+        return try {
+            file.readText().contains(QUANTANIUM_WRAPPER_MARKER)
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Rewrites Unix desktop shebangs (`/bin/bash`, `/bin/sh`, `/usr/bin/env bash`, etc.) inside [scriptFile]
+     * to Termux `$PREFIX/bin/...` so imported wrapper scripts do not fail with exit status 127 on Android.
+     */
+    fun normalizeTermuxScriptShebang(scriptFile: File, prefixPath: String): Boolean {
+        if (!scriptFile.isFile || scriptFile.length() == 0L || scriptFile.length() > 1024L * 1024L) return false
+        if (!isScriptMagic(readMagicBytes(scriptFile, 2))) return false
+        return try {
+            val content = scriptFile.readText()
+            val newlineIdx = content.indexOf('\n')
+            val firstLine = (if (newlineIdx == -1) content else content.substring(0, newlineIdx)).trimEnd('\r')
+            val body = if (newlineIdx == -1) "" else content.substring(newlineIdx)
+            val normalizedFirst = when {
+                firstLine == "#!/bin/bash" || firstLine == "#!/usr/bin/bash" -> "#!$prefixPath/bin/bash"
+                firstLine == "#!/bin/sh" || firstLine == "#!/usr/bin/sh" -> "#!$prefixPath/bin/sh"
+                firstLine.startsWith("#!/usr/bin/env ") -> {
+                    val tool = firstLine.removePrefix("#!/usr/bin/env ").trim().substringBefore(' ')
+                    val resolvedTool = if (tool.isNotBlank()) tool else "sh"
+                    "#!$prefixPath/bin/$resolvedTool"
+                }
+                else -> return false
+            }
+            scriptFile.writeText(normalizedFirst + body)
+            chmod0755(scriptFile)
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     /** Builds a glibc loader wrapper script for Termux when a dynamic glibc ELF binary needs it. */
-    fun buildTermuxGlibcWrapper(prefixPath: String, targetBinaryPath: String): String = """
-        |#!$prefixPath/bin/bash
-        |# Generated by Quantanium agent importer
+    fun buildTermuxGlibcWrapper(
+        prefixPath: String,
+        targetBinaryPath: String,
+        shellPath: String = "$prefixPath/bin/bash"
+    ): String = """
+        |#!$shellPath
+        |# $QUANTANIUM_WRAPPER_MARKER
         |GLIBC_LIB="$prefixPath/glibc/lib"
         |LOADER="${'$'}GLIBC_LIB/ld-linux-aarch64.so.1"
         |TARGET="$targetBinaryPath"
@@ -592,7 +766,12 @@ object AgentArchiveImporter {
         |    echo "glibc runtime missing (${'$'}LOADER). Reopen Quantanium to restore it." >&2
         |    exit 127
         |fi
+        |if [ ! -x "${'$'}TARGET" ]; then
+        |    echo "Agent binary missing or not executable (${'$'}TARGET)." >&2
+        |    exit 127
+        |fi
         |unset LD_PRELOAD
+        |unset LD_LIBRARY_PATH
         |export TMPDIR="${'$'}{TMPDIR:-$prefixPath/tmp}"
         |exec "${'$'}LOADER" --library-path "${'$'}GLIBC_LIB" "${'$'}TARGET" "${'$'}@"
         |""".trimMargin()

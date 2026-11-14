@@ -23,8 +23,12 @@ class AgentArchiveImporterTest {
     @get:Rule
     val tempFolder = TemporaryFolder()
 
-    /** Builds a minimal valid ELF64 little-endian binary; optionally attaches a PT_INTERP program header. */
-    private fun makeFakeElf64(interpPath: String? = null, extraPadding: Int = 0): ByteArray {
+    /** Builds a minimal valid ELF64 little-endian binary; optionally sets `e_machine` and attaches a PT_INTERP program header. */
+    private fun makeFakeElf64(
+        interpPath: String? = null,
+        extraPadding: Int = 0,
+        eMachine: Int = AgentArchiveImporter.EM_AARCH64
+    ): ByteArray {
         val ehdrSize = 64
         val phdrSize = 56
         val phNum = if (interpPath != null) 1 else 0
@@ -42,6 +46,7 @@ class AgentArchiveImporterTest {
         buf.put(4, 2.toByte())
         buf.put(5, 1.toByte())
         buf.put(6, 1.toByte())
+        buf.putShort(18, eMachine.toShort())
         buf.putLong(32, phOff)
         buf.putShort(54, phdrSize.toShort())
         buf.putShort(56, phNum.toShort())
@@ -138,6 +143,42 @@ class AgentArchiveImporterTest {
         assertFalse(AgentArchiveImporter.isGlibcDynamicElf(muslElf))
         assertFalse(AgentArchiveImporter.isGlibcDynamicElf(staticElf))
         assertFalse(AgentArchiveImporter.isGlibcDynamicElf(androidBionic))
+
+        assertTrue(AgentArchiveImporter.isAndroidBionicElf(androidBionic))
+        assertFalse(AgentArchiveImporter.isAndroidBionicElf(glibcElf))
+        assertFalse(AgentArchiveImporter.isAndroidBionicElf(staticElf))
+    }
+
+    @Test
+    fun checkElfArchCompatibilityDetectsArm64VsX8664() {
+        val arm64Elf = tempFolder.newFile("agy-arm64").apply {
+            writeBytes(makeFakeElf64("/lib/ld-linux-aarch64.so.1", eMachine = AgentArchiveImporter.EM_AARCH64))
+        }
+        val x64Elf = tempFolder.newFile("agy-x64").apply {
+            writeBytes(makeFakeElf64("/lib64/ld-linux-x86-64.so.2", eMachine = AgentArchiveImporter.EM_X86_64))
+        }
+
+        assertEquals(AgentArchiveImporter.EM_AARCH64, AgentArchiveImporter.readElfMachine(arm64Elf))
+        assertEquals(AgentArchiveImporter.EM_X86_64, AgentArchiveImporter.readElfMachine(x64Elf))
+        assertEquals(null, AgentArchiveImporter.checkElfArchCompatibility(arm64Elf, "aarch64"))
+        val x64Err = AgentArchiveImporter.checkElfArchCompatibility(x64Elf, "aarch64")
+        assertNotNull(x64Err)
+        assertTrue(x64Err!!.contains("x86_64"))
+    }
+
+    @Test
+    fun isDesktopElectronBundleDetectsElectronAppsOnly() {
+        val desktopDir = tempFolder.newFolder("Antigravity-arm64").apply {
+            File(this, "libffmpeg.so").writeText("so")
+            File(this, "resources.pak").writeText("pak")
+            File(this, "antigravity").writeBytes(makeFakeElf64())
+        }
+        assertTrue(AgentArchiveImporter.isDesktopElectronBundle(desktopDir))
+
+        val cliDir = tempFolder.newFolder("cli_arm64").apply {
+            File(this, "antigravity").writeBytes(makeFakeElf64("/system/bin/linker64"))
+        }
+        assertFalse(AgentArchiveImporter.isDesktopElectronBundle(cliDir))
     }
 
     @Test
@@ -159,18 +200,24 @@ class AgentArchiveImporterTest {
     }
 
     @Test
-    fun extractTarGzReadsPackageJsonVersionAndLocatesBinary() {
-        val tgz = tempFolder.newFile("opencode-cli.tgz")
+    fun extractTarGzPrefersShallowestPackageJsonOverNestedDependencies() {
+        val tgz = tempFolder.newFile("agy-cli.tgz")
         val fakeElf = makeFakeElf64("/lib/ld-linux-aarch64.so.1", extraPadding = 200 * 1024)
-        val pkgJson = """{"name":"opencode-cli","version":"2.4.1"}""".toByteArray()
+        val nestedDepJson = """{"name":"old-dep","version":"1.9.0"}""".toByteArray()
+        val rootPkgJson = """{"name":"antigravity-cli","version":"1.5.9"}""".toByteArray()
 
         GzipCompressorOutputStream(FileOutputStream(tgz)).use { gzos ->
             TarArchiveOutputStream(gzos).use { tos ->
-                tos.putArchiveEntry(TarArchiveEntry("package/package.json").apply { size = pkgJson.size.toLong() })
-                tos.write(pkgJson)
+                // Put deep nested 1.9.0 dependency BEFORE root 1.5.9 package.json to verify shallower priority wins
+                tos.putArchiveEntry(TarArchiveEntry("package/node_modules/old-dep/package.json").apply { size = nestedDepJson.size.toLong() })
+                tos.write(nestedDepJson)
                 tos.closeArchiveEntry()
 
-                tos.putArchiveEntry(TarArchiveEntry("package/bin/opencode").apply {
+                tos.putArchiveEntry(TarArchiveEntry("package/package.json").apply { size = rootPkgJson.size.toLong() })
+                tos.write(rootPkgJson)
+                tos.closeArchiveEntry()
+
+                tos.putArchiveEntry(TarArchiveEntry("package/bin/agy").apply {
                     size = fakeElf.size.toLong()
                     mode = 493
                 })
@@ -180,12 +227,45 @@ class AgentArchiveImporterTest {
         }
 
         val dest = tempFolder.newFolder("tgz_out")
-        val extracted = AgentArchiveImporter.extractArchive(tgz, dest, "opencode-cli.tgz")
-        assertEquals("2.4.1", extracted.versionHint)
+        val extracted = AgentArchiveImporter.extractArchive(tgz, dest, "agy-cli.tgz")
+        assertEquals("1.5.9", extracted.versionHint)
 
-        val bin = AgentArchiveImporter.findBinaryCandidate(dest, listOf("opencode"))
+        val bin = AgentArchiveImporter.findBinaryCandidate(dest, listOf("agy"))
         assertNotNull(bin)
-        assertEquals("opencode", bin!!.name)
+        assertEquals("agy", bin!!.name)
         assertTrue(AgentArchiveImporter.isGlibcDynamicElf(bin))
+    }
+
+    @Test
+    fun termuxWrapperAndShebangNormalizationEliminateStatus127() {
+        val prefix = "/data/data/com.termux/files/usr"
+        val wrapperContent = AgentArchiveImporter.buildTermuxGlibcWrapper(
+            prefixPath = prefix,
+            targetBinaryPath = "/data/data/com.termux/files/home/.local/bin/agy.real",
+            shellPath = "$prefix/bin/sh"
+        )
+        assertTrue(wrapperContent.startsWith("#!$prefix/bin/sh\n"))
+        assertTrue(wrapperContent.contains("unset LD_PRELOAD"))
+        assertTrue(wrapperContent.contains("unset LD_LIBRARY_PATH"))
+        assertTrue(wrapperContent.contains("--library-path"))
+
+        val wrapFile = tempFolder.newFile("agy").apply { writeText(wrapperContent) }
+        assertTrue(AgentArchiveImporter.isQuantaniumGlibcWrapper(wrapFile))
+
+        val scriptFile = tempFolder.newFile("agy_script.sh").apply {
+            writeText("#!/usr/bin/env bash\necho ok\n")
+        }
+        assertTrue(AgentArchiveImporter.normalizeTermuxScriptShebang(scriptFile, prefix))
+        assertTrue(scriptFile.readText().startsWith("#!$prefix/bin/bash\n"))
+    }
+
+    @Test
+    fun parseCliVersionOutputSkipsStartupNoiseAndReadsSemver() {
+        val raw = """
+            ERROR: logging before google.Init: I1114 05:39:50.123456 9999 tz.cc:12] Initialized Android local timezone
+            Antigravity CLI v1.5.9
+        """.trimIndent()
+        assertEquals("1.5.9", AgentArchiveImporter.parseCliVersionOutput(raw))
+        assertEquals("1.5.9", AgentArchiveImporter.parseCliVersionOutput("1.5.9\n"))
     }
 }

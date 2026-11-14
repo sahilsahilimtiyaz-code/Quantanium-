@@ -114,7 +114,7 @@ func agyInstalled(path string) bool {
 	return err == nil && !fi.IsDir()
 }
 
-// agyVersion runs `agy --version` (cached until the file changes).
+// agyVersion runs `agy --version` (cached until the binary or companion agy.real changes).
 func agyVersion(bin string) string {
 	if !agyInstalled(bin) {
 		return ""
@@ -123,15 +123,27 @@ func agyVersion(bin string) string {
 	if err != nil {
 		return ""
 	}
+	stamp := fi.ModTime()
+	if realFi, rErr := os.Stat(bin + ".real"); rErr == nil && realFi.ModTime().After(stamp) {
+		stamp = realFi.ModTime()
+	}
 	agyVerMu.Lock()
 	defer agyVerMu.Unlock()
-	if agyVerPath == bin && agyVerStamp.Equal(fi.ModTime()) && agyVerValue != "" {
+	if agyVerPath == bin && agyVerStamp.Equal(stamp) && agyVerValue != "" {
 		return agyVerValue
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--version")
 	cmd.Stdin = nil
+	var cleanEnv []string
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, "LD_PRELOAD=") || strings.HasPrefix(kv, "LD_LIBRARY_PATH=") {
+			continue
+		}
+		cleanEnv = append(cleanEnv, kv)
+	}
+	cmd.Env = cleanEnv
 	// stdout only: agy logs to stderr before it is set up (on Android "ERROR: logging before google.Init: I… Initialized
 	// Android local timezone…"), which is not an error and not the version
 	out, err := cmd.Output()
@@ -146,12 +158,6 @@ func agyVersion(bin string) string {
 		if _, statErr := os.Stat(ldLinux); statErr == nil {
 			glibcCmd := exec.CommandContext(ctx, ldLinux, "--library-path", glibcLib, bin, "--version")
 			glibcCmd.Stdin = nil
-			var cleanEnv []string
-			for _, kv := range os.Environ() {
-				if !strings.HasPrefix(kv, "LD_PRELOAD=") {
-					cleanEnv = append(cleanEnv, kv)
-				}
-			}
 			glibcCmd.Env = cleanEnv
 			if glibcOut, glibcErr := glibcCmd.Output(); glibcErr == nil && len(glibcOut) > 0 {
 				out = glibcOut
@@ -160,28 +166,34 @@ func agyVersion(bin string) string {
 	}
 	v := versionLine(string(out))
 	if v != "" {
-		agyVerPath, agyVerStamp, agyVerValue = bin, fi.ModTime(), v
+		agyVerPath, agyVerStamp, agyVerValue = bin, stamp, v
 	}
 	return v
 }
 
 var agyVersionRe = regexp.MustCompile(`^v?\d+(\.\d+)+\S*$`)
+var agySemverTokenRe = regexp.MustCompile(`\bv?(\d+\.\d+\.\d+(?:[-+][A-Za-z0-9._-]+)?)\b`)
 
-// versionLine is the first line that looks like a version ("1.5.3"), else the first line.
+// versionLine is the first line that looks like a version ("1.5.9" or "agy 1.5.9"), skipping google.Init startup logs.
 func versionLine(s string) string {
+	var nonLogLines []string
 	for _, l := range strings.Split(s, "\n") {
-		if l = strings.TrimSpace(l); agyVersionRe.MatchString(l) {
-			return l
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "ERROR: logging before google.Init") {
+			continue
+		}
+		nonLogLines = append(nonLogLines, l)
+		if agyVersionRe.MatchString(l) {
+			return strings.TrimPrefix(l, "v")
 		}
 	}
-	return firstLine(s)
-}
-
-func firstLine(s string) string {
-	for _, l := range strings.Split(s, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
-			return l
+	for _, l := range nonLogLines {
+		if m := agySemverTokenRe.FindStringSubmatch(l); len(m) > 1 {
+			return m[1]
 		}
+	}
+	if len(nonLogLines) > 0 {
+		return nonLogLines[0]
 	}
 	return ""
 }

@@ -83,11 +83,9 @@ object BridgeInfo {
     private fun cleanAgyLog(log: String): String =
         if (!log.contains("logging before google.Init")) log else log.lines().filterNot(::isAgyStartupLog).joinToString("\n")
 
-    private val versionRe = Regex("""^v?\d+(\.\d+)+\S*$""")
-
-    /** The version from `agy --version` (an older bridge may hand over the startup log line instead: "" then). */
+    /** The version from `agy --version` (skips startup log noise; accepts both `1.5.9` and `agy 1.5.9`). */
     private fun agyVersionOf(raw: String): String =
-        raw.lines().map { it.trim() }.firstOrNull { versionRe.matches(it) } ?: ""
+        com.example.gemini.data.agent.AgentArchiveImporter.parseCliVersionOutput(raw).orEmpty()
 
     /** Asks the bridge where `agy` is and which version it is (`agy --version`). */
     fun refreshAgyCli() {
@@ -183,21 +181,39 @@ object BridgeInfo {
                         jobLog.toString()
                     }
                     _job.value = Job(kind = "import", running = false, exitCode = 0, log = summary)
+                    val displayVer = res.version.takeIf { it != "installed" }.orEmpty()
+                    _agyCli.value = AgyCli(installed = true, path = res.targetPath, version = displayVer)
+                    _agyError.value = null
                     _agyUpdatedTo.value = res.version
-                    refreshAgyCli()
-                    val localRunning = !AuthPreferences.currentRemoteMode &&
-                        com.example.gemini.data.local.LocalServerManager.status.value is com.example.gemini.data.local.LocalServerStatus.Running
-                    if (localRunning) {
+
+                    val statusNow = com.example.gemini.data.local.LocalServerManager.status.value
+                    val localActive = !AuthPreferences.currentRemoteMode && (
+                        statusNow is com.example.gemini.data.local.LocalServerStatus.Running ||
+                            statusNow is com.example.gemini.data.local.LocalServerStatus.Starting
+                        )
+                    if (localActive) {
                         com.example.gemini.ui.components.AppToastHelper.showToast(
                             "agy ${res.version} imported. Restarting local server…",
                             com.example.gemini.ui.components.ChatToastType.SUCCESS
                         )
                         com.example.gemini.data.local.LocalServerManager.restartServer(app)
+                        scope.launch {
+                            kotlinx.coroutines.withTimeoutOrNull(25_000L) {
+                                delay(1500)
+                                while (AgyBridgeService.instance.systemConnectionState.value !is SystemConnectionState.Connected) {
+                                    delay(400)
+                                }
+                            }
+                            refreshAgyCli()
+                        }
                     } else {
                         com.example.gemini.ui.components.AppToastHelper.showToast(
                             "agy ${res.version} imported successfully!",
                             com.example.gemini.ui.components.ChatToastType.SUCCESS
                         )
+                        if (AgyBridgeService.instance.systemConnectionState.value is SystemConnectionState.Connected) {
+                            refreshAgyCli()
+                        }
                     }
                 }
                 .onFailure { err ->

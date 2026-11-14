@@ -106,9 +106,11 @@ func CleanupLegacyAgyWrappers() {
 		agyFile := filepath.Join(localBin, "agy")
 		if fi, err := os.Stat(realFile); err == nil && !fi.IsDir() {
 			if _, err2 := os.Stat(agyFile); err2 != nil || IsLegacyAgyWrapper(agyFile) {
-				_ = os.Remove(agyFile)
-				_ = os.Rename(realFile, agyFile)
-				_ = os.Chmod(agyFile, 0o755)
+				if !GlibcInterp(realFile) {
+					_ = os.Remove(agyFile)
+					_ = os.Rename(realFile, agyFile)
+					_ = os.Chmod(agyFile, 0o755)
+				}
 			}
 		}
 	}
@@ -667,16 +669,16 @@ func (m *HubManager) Start() error {
 	}
 
 	if !usedGlibcLoader {
-		shArgs := append([]string{"-c", `exec "$0" "$@"`, m.AgyBinPath}, args...)
-		cmd = exec.CommandContext(ctx, "sh", shArgs...)
+		// Execute directly when runnable so shebang wrappers (including Termux glibc wrappers) don't depend on /bin/sh or PATH lookup order.
+		cmd = exec.CommandContext(ctx, m.AgyBinPath, args...)
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	baseEnv := make([]string, 0, len(os.Environ())+14)
 	hasTmp := false
 	for _, kv := range os.Environ() {
-		if usedGlibcLoader && strings.HasPrefix(kv, "LD_PRELOAD=") {
-			continue // Never preload bionic libtermux-exec.so into a glibc process
+		if usedGlibcLoader && (strings.HasPrefix(kv, "LD_PRELOAD=") || strings.HasPrefix(kv, "LD_LIBRARY_PATH=")) {
+			continue // Never preload bionic libtermux-exec.so or bionic libs into a glibc process
 		}
 		if strings.HasPrefix(kv, "TMPDIR=") && len(kv) > len("TMPDIR=") {
 			hasTmp = true

@@ -12,6 +12,7 @@ import android.system.Os
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.gemini.R
+import com.example.gemini.data.agent.AgentArchiveImporter
 import com.example.gemini.data.preferences.AuthPreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -674,14 +675,15 @@ object LocalEnvironmentManager {
     }
 
     /**
-     * Cleans up any legacy fake shell wrappers at `$PREFIX/bin/agy` or `~/.local/bin/agy` (which previously caused
-     * `agy_ide_bridge` to think `agy` was installed when it wasn't, and forced native Android Bionic `agy` binaries
-     * through glibc's `ld-linux-aarch64.so.1`). If a real `agy` binary exists at `~/.local/bin/agy`, links `$PREFIX/bin/agy`
-     * to it so terminal sessions can also invoke `agy` directly.
+     * Cleans up any legacy fake shell wrappers at `$PREFIX/bin/agy` or `~/.local/bin/agy`,
+     * ensures glibc-linked `agy` ELFs run via the bundled glibc loader wrapper (`~/.local/bin/agy` ->
+     * `~/.local/bin/agy.real`), keeps native Bionic/static ELFs directly at `~/.local/bin/agy`, and
+     * symlinks `$PREFIX/bin/agy` to `~/.local/bin/agy` (replacing any stale competing regular binary).
      */
     fun ensureAgyWrapper(context: Context) {
         if (!isTermuxPackage(context)) return
         try {
+            val prefix = getPrefixDir(context).absolutePath
             val home = getHomeDir(context).absolutePath
             val bin = getBinDir(context)
             if (!bin.exists()) return
@@ -700,43 +702,71 @@ object LocalEnvironmentManager {
                 }
             }
 
-            // 1. Remove any legacy fake wrapper script at $PREFIX/bin/agy or ~/.local/bin/agy
-            if (isLegacyWrapper(usrAgy)) {
-                usrAgy.delete()
-            }
-            if (isLegacyWrapper(localAgy)) {
-                localAgy.delete()
-            }
+            // 1. Remove any legacy fake wrapper scripts at $PREFIX/bin/agy or ~/.local/bin/agy
+            if (isLegacyWrapper(usrAgy)) usrAgy.delete()
+            if (isLegacyWrapper(localAgy)) localAgy.delete()
 
-            // 2. If an earlier version moved ~/.local/bin/agy to ~/.local/bin/agy.real, restore it back to ~/.local/bin/agy
-            if (realAgy.exists() && realAgy.length() > 100_000L) {
-                if (!localAgy.exists() || isSymlink(localAgy)) {
-                    localAgy.delete()
-                    realAgy.renameTo(localAgy)
-                    localAgy.setExecutable(true, false)
-                    localAgy.setReadable(true, false)
+            val shellPath = if (File(bin, "bash").exists()) "${bin.absolutePath}/bash" else "${bin.absolutePath}/sh"
+
+            fun writeGlibcWrapperForRealBinary() {
+                ensureGlibcEnvironment(context)
+                AgentArchiveImporter.chmod0755(realAgy)
+                val wrapper = AgentArchiveImporter.buildTermuxGlibcWrapper(prefix, realAgy.absolutePath, shellPath)
+                val currentText = if (localAgy.exists() && !isSymlink(localAgy) && localAgy.length() <= 16_384L) {
+                    runCatching { localAgy.readText() }.getOrNull()
+                } else null
+                if (currentText != wrapper) {
+                    val tmpWrap = File(localBin, ".agy.wrap_tmp")
+                    tmpWrap.writeText(wrapper)
+                    AgentArchiveImporter.chmod0755(tmpWrap)
+                    if (localAgy.exists() || isSymlink(localAgy)) localAgy.delete()
+                    if (!tmpWrap.renameTo(localAgy)) {
+                        localAgy.writeText(wrapper)
+                        tmpWrap.delete()
+                    }
+                    AgentArchiveImporter.chmod0755(localAgy)
                 }
             }
 
-            // 3. Only expose $PREFIX/bin/agy if ~/.local/bin/agy actually exists as a real installed binary
-            if (localAgy.exists() && !localAgy.isDirectory && localAgy.length() > 100_000L) {
-                localAgy.setExecutable(true, false)
-                localAgy.setReadable(true, false)
+            // 2. Self-heal glibc vs Bionic/static binaries between ~/.local/bin/agy.real and ~/.local/bin/agy
+            if (realAgy.exists() && !realAgy.isDirectory && realAgy.length() > 100_000L) {
+                if (AgentArchiveImporter.isGlibcDynamicElf(realAgy)) {
+                    writeGlibcWrapperForRealBinary()
+                } else if (!localAgy.exists() || isSymlink(localAgy) || AgentArchiveImporter.isQuantaniumGlibcWrapper(localAgy)) {
+                    localAgy.delete()
+                    realAgy.renameTo(localAgy)
+                    AgentArchiveImporter.chmod0755(localAgy)
+                }
+            } else if (localAgy.exists() && !localAgy.isDirectory && !isSymlink(localAgy) && AgentArchiveImporter.isGlibcDynamicElf(localAgy)) {
+                // Upgrade a raw glibc ELF placed directly at ~/.local/bin/agy into agy.real + glibc wrapper
+                if (realAgy.exists() || isSymlink(realAgy)) realAgy.delete()
+                if (localAgy.renameTo(realAgy)) {
+                    writeGlibcWrapperForRealBinary()
+                }
+            }
+
+            // 3. Expose $PREFIX/bin/agy as a symlink to ~/.local/bin/agy whenever a valid binary/wrapper is present
+            val hasValidLocalAgy = localAgy.exists() && !localAgy.isDirectory && (
+                localAgy.length() > 100_000L ||
+                    AgentArchiveImporter.isQuantaniumGlibcWrapper(localAgy) ||
+                    AgentArchiveImporter.isScriptMagic(AgentArchiveImporter.readMagicBytes(localAgy, 2))
+                )
+            if (hasValidLocalAgy) {
+                AgentArchiveImporter.chmod0755(localAgy)
                 val pointsToLocal = try {
                     Os.readlink(usrAgy.absolutePath) == localAgy.absolutePath
                 } catch (_: Exception) {
                     false
                 }
-                if (!pointsToLocal && (!usrAgy.exists() || isSymlink(usrAgy))) {
-                    usrAgy.delete()
+                if (!pointsToLocal) {
+                    if (usrAgy.exists() || isSymlink(usrAgy)) usrAgy.delete()
                     Os.symlink(localAgy.absolutePath, usrAgy.absolutePath)
                 }
             } else if (isSymlink(usrAgy) && !usrAgy.exists()) {
-                // Remove dangling symlink when agy is not installed
                 usrAgy.delete()
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Agy launcher cleanup failed: ${e.message}")
+            Log.w(TAG, "Agy launcher setup failed: ${e.message}")
         }
     }
 
