@@ -12,25 +12,33 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.RocketLaunch
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -57,6 +66,9 @@ import com.example.gemini.data.remote.AgyHubClient
 import com.example.gemini.data.remote.SystemConnectionState
 import com.example.gemini.data.remote.SystemStatus
 import com.example.gemini.domain.model.AgentKind
+import com.example.gemini.theme.QuotaGreen
+import com.example.gemini.ui.components.QuantaniumExpandableContent
+import com.example.gemini.ui.components.QuantaniumStatusChip
 import com.example.gemini.ui.components.accent
 import com.example.gemini.ui.components.label
 import com.example.gemini.ui.components.staggeredEntrance
@@ -302,11 +314,44 @@ fun AgentStatusDot(colors: List<Color>, modifier: Modifier = Modifier, size: Dp 
     }
 }
 
-/** Round agent mark (tinted with the agent's color) with an optional status badge. */
+/** Round agent mark (tinted with the agent's color) with an optional status badge and breathing aura. */
 @Composable
-fun AgentMark(agent: AgentKind, modifier: Modifier = Modifier, size: Dp = 32.dp, statusColor: Color? = null) {
+fun AgentMark(
+    agent: AgentKind,
+    modifier: Modifier = Modifier,
+    size: Dp = 32.dp,
+    statusColor: Color? = null,
+    pulsingAura: Boolean = false
+) {
     val accent = agent.accent()
-    Box(modifier.size(size)) {
+    val auraTransition = if (pulsingAura) rememberInfiniteTransition(label = "agent_mark_aura") else null
+    val auraScale = auraTransition?.animateFloat(
+        initialValue = 1.0f,
+        targetValue = 1.24f,
+        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
+        label = "agent_aura_scale"
+    )?.value ?: 1f
+    val auraAlpha = auraTransition?.animateFloat(
+        initialValue = 0.24f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(tween(1800), RepeatMode.Reverse),
+        label = "agent_aura_alpha"
+    )?.value ?: 0f
+
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        if (pulsingAura) {
+            Box(
+                Modifier
+                    .size(size)
+                    .graphicsLayer {
+                        scaleX = auraScale
+                        scaleY = auraScale
+                        alpha = auraAlpha
+                    }
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+        }
         Box(
             Modifier.size(size).clip(CircleShape).background(accent.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
@@ -486,6 +531,7 @@ fun AgentStatusMenu(
 }
 
 /** Centered prompt card for an agent that is not ready (empty chat screen). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AgentSetupPrompt(
     agent: AgentKind,
@@ -495,10 +541,17 @@ fun AgentSetupPrompt(
     statusColor: Color? = null,
     actionLabel: String? = null,
     onAction: () -> Unit = {},
+    importLabel: String? = null,
+    onImport: (() -> Unit)? = null,
     secondaryLabel: String? = null,
-    onSecondary: () -> Unit = {}
+    onSecondary: () -> Unit = {},
+    jobKind: String = "import",
+    jobRunning: Boolean = false,
+    jobExitCode: Int? = null,
+    jobLog: String? = null
 ) {
     val accent = agent.accent()
+    val hasLog = jobRunning || !jobLog.isNullOrBlank()
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -525,7 +578,7 @@ fun AgentSetupPrompt(
                     .padding(horizontal = 24.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                AgentMark(agent, size = 64.dp, statusColor = statusColor)
+                AgentMark(agent, size = 64.dp, statusColor = statusColor, pulsingAura = jobRunning)
                 Spacer(Modifier.height(16.dp))
                 Text(
                     title,
@@ -541,18 +594,89 @@ fun AgentSetupPrompt(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     lineHeight = 20.sp
                 )
-                if (actionLabel != null) {
+                if (actionLabel != null || (importLabel != null && onImport != null)) {
                     Spacer(Modifier.height(20.dp))
-                    androidx.compose.material3.Button(
-                        onClick = onAction,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.tactilePress(),
-                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
-                        contentPadding = PaddingValues(horizontal = 26.dp, vertical = 11.dp)
-                    ) { Text(actionLabel, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (actionLabel != null) {
+                            androidx.compose.material3.Button(
+                                onClick = onAction,
+                                enabled = !jobRunning,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.tactilePress(enabled = !jobRunning),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = accent,
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 11.dp)
+                            ) { Text(actionLabel, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                        }
+                        if (importLabel != null && onImport != null) {
+                            OutlinedButton(
+                                onClick = onImport,
+                                enabled = !jobRunning,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.tactilePress(enabled = !jobRunning),
+                                border = BorderStroke(1.dp, accent.copy(alpha = 0.45f)),
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 11.dp)
+                            ) {
+                                Icon(Icons.Outlined.UploadFile, null, tint = accent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(importLabel, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = accent)
+                            }
+                        }
+                    }
+                }
+                QuantaniumExpandableContent(visible = hasLog, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+                        val statusChipColor = when {
+                            jobRunning -> accent
+                            jobExitCode == 0 -> QuotaGreen
+                            else -> MaterialTheme.colorScheme.error
+                        }
+                        val statusChipLabel = when {
+                            jobRunning -> if (jobKind == "import") "Importing…" else "Running…"
+                            jobExitCode == 0 -> "Completed"
+                            else -> "Failed${jobExitCode?.let { " ($it)" } ?: ""}"
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            QuantaniumStatusChip(label = statusChipLabel, color = statusChipColor, pulsing = jobRunning)
+                        }
+                        if (jobRunning) {
+                            Spacer(Modifier.height(8.dp))
+                            LinearProgressIndicator(
+                                Modifier.fillMaxWidth().clip(CircleShape),
+                                color = accent,
+                                trackColor = accent.copy(alpha = 0.14f)
+                            )
+                        }
+                        val logText = jobLog.orEmpty().trim()
+                        if (logText.isNotEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)),
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp)
+                            ) {
+                                Text(
+                                    text = logText,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                    modifier = Modifier
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(10.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 if (secondaryLabel != null) {
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(6.dp))
                     androidx.compose.material3.TextButton(
                         onClick = onSecondary,
                         modifier = Modifier.tactilePress()

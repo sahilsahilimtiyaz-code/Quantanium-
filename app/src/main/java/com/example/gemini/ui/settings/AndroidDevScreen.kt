@@ -92,13 +92,13 @@ fun AndroidDevScreen(
         }
         if (!state.termuxBuild) {
             DevInfoCard("Needs a com.termux build", cardBg, BorderStroke(1.dp, Amber.copy(alpha = 0.5f))) {
-                Hint("The build tools run in a proot-distro Ubuntu container installed with Termux packages, which only work in AntiGem's com.termux builds. Install one of those builds from AntiGem's releases to build apps on the phone.")
+                Hint("The build tools run in a proot-distro Ubuntu container installed with Termux packages, which only work in Quantanium's com.termux builds. Install one of those builds to build apps on the phone.")
             }
             return@Column
         }
         if (!state.bootstrapInstalled) {
             DevInfoCard("Install the terminal first", cardBg, cardBorder) {
-                Hint("The tools install into AntiGem's terminal. Install it in Settings → Terminal & Shell, then come back here.")
+                Hint("The tools install into Quantanium's terminal. Install it in Settings → Terminal & Shell, then come back here.")
             }
             return@Column
         }
@@ -291,7 +291,7 @@ private fun InstallStep(state: AndroidDevManager.State, cardBg: Color, cardBorde
             }
             if (!state.filesReady) Hint("The setup files are downloaded first.")
         } else if (isInstallTask(state.task)) {
-            Hint("Keep AntiGem open: the screen stays on while this runs. Stopping half way is safe; install the part again to finish it.")
+            Hint("Keep Quantanium open: the screen stays on while this runs. Stopping half way is safe; install the part again to finish it.")
             OutlinedButton(onClick = AndroidDevManager::stop, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
                 Icon(Icons.Outlined.StopCircle, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Stop")
             }

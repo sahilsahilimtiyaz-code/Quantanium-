@@ -122,6 +122,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import com.example.gemini.ui.cloud.cloudProjectsSection
+import com.example.gemini.ui.components.staggeredEntrance
+import com.example.gemini.ui.components.tactilePress
 
 enum class ScrollDirection { UP, DOWN }
 
@@ -2196,8 +2198,8 @@ fun ChatScreen(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .padding(vertical = 4.dp)
-                                                        .then(com.example.gemini.ui.components.staggeredEntrance(index = idx))
-                                                        .then(com.example.gemini.ui.components.tactilePress(chipInteraction))
+                                                        .staggeredEntrance(index = idx)
+                                                        .tactilePress(chipInteraction)
                                                 ) {
                                                     Row(
                                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
